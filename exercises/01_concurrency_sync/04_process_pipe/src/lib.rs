@@ -53,7 +53,14 @@ pub fn run_command(program: &str, args: &[&str]) -> String {
     // TODO: Set stdout to Stdio::piped()
     // TODO: Execute with .output() and get output
     // TODO: Convert stdout to String and return
-    todo!()
+    let output = Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .output()
+        .expect("Failed to execute command");
+    String::from_utf8(output.stdout).expect("Invalid UTF-8 output")
+
+
 }
 
 /// Write data to child process (cat) stdin via pipe and read its stdout output.
@@ -89,7 +96,28 @@ pub fn pipe_through_cat(input: &str) -> String {
     // TODO: Write input to child process stdin
     // TODO: Drop stdin to close pipe (otherwise cat won't exit)
     // TODO: Read output from child process stdout
-    todo!()
+
+    //1. 创建子进程，把标准输入输出接入管道
+    let mut child = Command::new("cat")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn cat");
+    //2. 通过take() 拿走stdin所有权
+    // 写完数据，这个局部块结束的时候，stdin会被自动drop，从而像紫锦城a发送EOF
+    if let Some(mut stdin) = child.stdin.take(){
+        stdin.write_all(input.as_bytes()).expect("Failed to write to child stdin");
+    }
+
+     //3. 读取子进程的处理结果
+     let mut output = String::new();
+     if let Some(mut stdout) = child.stdout.take(){
+        stdout.read_to_string(&mut output).expect("Failed to read from child stdout");
+     }
+
+     //等待子进程退出
+    child.wait().expect("Failed to wait on child");
+    output
 }
 
 /// Get child process exit code.
@@ -110,7 +138,14 @@ pub fn get_exit_code(command: &str) -> i32 {
     // TODO: Use Command::new("sh").args(["-c", command])
     // TODO: Execute and get status
     // TODO: Return exit code
-    todo!()
+
+    let status = Command::new("sh")
+        .args(["-c", command])
+        .status()
+        .expect("Failed to exectue shell command");
+
+    //获取状态码，如果信号被意外终止，默认返回一个非零错误码
+    status.code().unwrap_or(1)
 }
 
 /// Execute the given shell command and return its stdout output as a `Result`.
@@ -137,7 +172,17 @@ pub fn run_command_with_result(program: &str, args: &[&str]) -> io::Result<Strin
     // TODO: Set stdout to Stdio::piped()
     // TODO: Execute with .output() and handle Result
     // TODO: Convert stdout to String with from_utf8, mapping errors to io::Error
-    todo!()
+
+    // 使用？操作符向上抛出io错误
+    let output = Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .output()?;
+    //将Fromutf8Errorc转换成标准库的io::Error格式
+    String::from_utf8(output.stdout).map_err(|e|{
+        io::Error::new(io::ErrorKind::InvalidData,e)
+    })
+ 
 }
 
 /// Interact with `grep` via bidirectional pipes, filtering lines that contain a pattern.
@@ -167,7 +212,25 @@ pub fn pipe_through_grep(pattern: &str, input: &str) -> String {
     // TODO: Drop stdin to close pipe
     // TODO: Read output from child stdout line by line
     // TODO: Collect and return matching lines
-    todo!()
+
+    let mut child = Command::new("grep")
+        .arg(pattern)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn grep");
+
+    if let Some(mut stdin) = child.stdin.take(){
+        stdin.write_all(input.as_bytes()).expect("Failed to write to grep stdin");
+    }
+
+    let mut output = String::new();
+    if let Some(mut stdout) = child.stdout.take(){
+        stdout.read_to_string(&mut output).expect("Failed ot read grep stdout");
+    }
+
+    child.wait().expect("Failed to wait on grep");
+    output
 }
 
 #[cfg(test)]

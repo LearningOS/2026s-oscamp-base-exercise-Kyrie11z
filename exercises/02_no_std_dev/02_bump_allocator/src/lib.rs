@@ -31,9 +31,10 @@
 
 #![cfg_attr(not(test), no_std)]
 
-use core::alloc::{GlobalAlloc, Layout};
+use core::alloc::{self, GlobalAlloc, Layout};
 use core::ptr::null_mut;
 use core::sync::atomic::{AtomicUsize, Ordering};
+
 
 pub struct BumpAllocator {
     heap_start: usize,
@@ -74,7 +75,30 @@ unsafe impl GlobalAlloc for BumpAllocator {
         // 5. Atomically update next to end using compare_exchange
         //    (if CAS fails, another thread raced — retry in a loop)
         // 6. Return the aligned address as a pointer
-        todo!()
+
+        let align = layout.align();
+        let size = layout.size();
+
+        //加载当前指针的位置
+        let mut current = self.next.load(Ordering::SeqCst);
+        loop{
+            //将 next 向上对齐到 layout.align(),位运算技巧：加上 (align - 1) 然后清除低位，使其成为 `align` 的整数倍
+            let aligned = (current + align -1) & !(align - 1);
+            //计算分配结束位置（使用 checked_add 防止整数溢出攻击或 Bug）
+            let alloc_end = match aligned.checked_add(size){
+                Some(end) => end,
+                None => return null_mut()
+            };
+            // 如果结束位置超出了堆的边界，返回 null_mut() 表示内存不足 (OOM)
+            if alloc_end > self.heap_end {
+                return null_mut();
+            }
+            match self.next.compare_exchange_weak(current, alloc_end, Ordering::SeqCst, Ordering::SeqCst){
+                Ok(_) => return aligned as *mut u8,
+                Err(new_current) => current = new_current, 
+            }
+        }
+
     }
 
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
