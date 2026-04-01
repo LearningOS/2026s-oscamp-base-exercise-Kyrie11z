@@ -38,7 +38,7 @@
 //! - fd number reuse strategy (find smallest free slot)
 //! - `Arc` reference counting and resource release
 
-use std::sync::Arc;
+use std::{clone, sync::Arc};
 
 /// File abstraction trait — all "files" in the kernel (regular files, pipes, sockets) implement this
 pub trait File: Send + Sync {
@@ -51,13 +51,13 @@ pub struct FdTable {
     // TODO: Design the internal structure
     // Hint: use Vec<Option<Arc<dyn File>>>
     //       the index is the fd number, None means the fd is closed or unallocated
+    table: Vec<Option<Arc<dyn File>>>,
 }
 
 impl FdTable {
     /// Create an empty fd table
     pub fn new() -> Self {
-        // TODO
-        todo!()
+        Self { table: Vec::new()}
     }
 
     /// Allocate a new fd, return the fd number.
@@ -65,25 +65,45 @@ impl FdTable {
     /// Prefers reusing the smallest closed fd number; if no free slot, appends to the end.
     pub fn alloc(&mut self, file: Arc<dyn File>) -> usize {
         // TODO
-        todo!()
+        //遍历已经存在的表，寻找最小的，值为None的未分配块分配
+        for (fd, slot) in self.table.iter_mut().enumerate(){
+            if slot.is_none(){
+                *slot = Some(file);
+                return fd;
+            }
+        }
+
+        //如果没有空闲位，从Vec尾部追加
+        let new_fd: usize = self.table.len();
+        self.table.push(Some(file));
+        new_fd
     }
 
     /// Get the file object for an fd. Returns None if the fd doesn't exist or is closed.
     pub fn get(&self, fd: usize) -> Option<Arc<dyn File>> {
         // TODO
-        todo!()
+        // get(fd) 会返回 Option<&Option<Arc<dyn File>>>
+        // cloned() 将其变为 Option<Option<Arc<dyn File>>>
+        // flatten() 最终将其压平为 Option<Arc<dyn File>
+        self.table.get(fd).cloned().flatten()
     }
 
     /// Close an fd. Returns true on success, false if the fd doesn't exist or is already closed.
     pub fn close(&mut self, fd: usize) -> bool {
         // TODO
-        todo!()
+        //检查fd是否合法，且当前有被打开的文件
+        if fd < self.table.len() && self.table[fd].is_some(){
+            self.table[fd] = None;
+            true
+        }else{
+            false
+        }
     }
 
     /// Return the number of currently allocated fds (excluding closed ones)
     pub fn count(&self) -> usize {
         // TODO
-        todo!()
+        self.table.iter().filter(|slot|slot.is_some()).count()
     }
 }
 
