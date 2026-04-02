@@ -62,7 +62,11 @@ impl TaskContext {
     /// - Set `sp = stack_top` with 16-byte alignment (RISC-V ABI requires 16-byte aligned stack at function entry).
     /// - Leave `s0`–`s11` zero; they will be loaded on switch.
     pub fn init(&mut self, stack_top: usize, entry: usize) {
-        todo!("set ra = entry, sp = stack_top (16-byte aligned)")
+        // 设置返回地址 ra 为函数的入口。
+        self.ra = entry as u64;
+        // 栈指针 sp 设置为栈顶，并强制进行 16 字节向下对齐
+        // (RISC-V ABI 严格要求函数入口的栈指针必须是 16 字节对齐的)
+        self.sp = (stack_top & !0xF) as u64
     }
 }
 
